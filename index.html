@@ -319,6 +319,15 @@
     }
     .modal-close:hover { color: var(--text); }
     .modal-count { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+    .btn-analyze-book {
+      background: var(--card2); border: 1px solid #2a4a5a;
+      color: var(--ai); font-size: 12px; font-weight: 600;
+      border-radius: 8px; padding: 7px 12px; cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.15s;
+    }
+    .btn-analyze-book:hover    { border-color: var(--ai); }
+    .btn-analyze-book:disabled { opacity: 0.4; cursor: default; }
     .modal-hl-item {
       border-left: 3px solid var(--border);
       padding: 10px 0 10px 14px;
@@ -346,7 +355,10 @@
       </div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-count" id="modal-count"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="modal-count" id="modal-count" style="margin-bottom:0"></div>
+      <button class="btn-analyze-book" id="btn-analyze-book" onclick="analyzeBook()">🤖 AIにコメントさせる</button>
+    </div>
     <div id="modal-hl-list"></div>
   </div>
 </div>
@@ -919,6 +931,62 @@ function removeBookFav(idx, e) {
   updateBookStarBtn();
   updateFavBadge();
   renderFavorites();
+}
+
+// ─── 一冊まるごとAI分析 ───────────────────────────────
+async function analyzeBook() {
+  if (!currentHL) return;
+  const book  = BOOKS[currentHL.b];
+  const allHL = HIGHLIGHTS.filter(h => h.b === currentHL.b);
+  if (!allHL.length) return;
+
+  const btn = document.getElementById('btn-analyze-book');
+  btn.disabled    = true;
+  btn.textContent = '分析中...';
+
+  // モーダルを閉じてAIセクションを表示
+  closeModal();
+  show('ai-section');
+  clearChat();
+  setAIThinking(true);
+  chatMessages = [];
+
+  // 全ハイライトをテキストにまとめる（長すぎる場合は先頭50件に絞る）
+  const hlList = allHL.slice(0, 50);
+  const hlBlock = hlList.map((h, i) => `${i + 1}. "${h.h}"`).join('\n');
+  const omitted = allHL.length > 50 ? `\n（全${allHL.length}件のうち50件を抜粋）` : '';
+
+  const prompt = `あなたは今井陽介（46歳・軽井沢在住・ビットコイン長期保有者・哲学愛好家・非エンジニア）の思考パートナーです。
+
+今井さんが『${book.title}』（${book.author}）を読んで、以下の箇所にハイライトを引いています。${omitted}
+
+${hlBlock}
+
+このハイライトの傾向を読んで、以下の観点でコメントしてください：
+
+1. **今井さんが何に引っかかったか**——どんなテーマ・感情・問いに反応しているか
+2. **この本から今井さんが持ち帰ったもの**——思想・行動・世界観への影響
+3. **このハイライト群を今の今井さんの状況と接続する**——ビットコイン・軽井沢から京都移住・旦那衆・塩飽水軍などのテーマと絡めて
+
+結論から言う。短く、歯切れよく。`;
+
+  addChatMsg('user', `『${book.title}』の全ハイライト${allHL.length}件をAIに送りました`);
+  chatMessages.push({ role: 'user', content: prompt });
+
+  try {
+    const reply = await callGroq(chatMessages, 1000);
+    chatMessages.push({ role: 'assistant', content: reply });
+    addChatMsg('ai', reply);
+  } catch(e) {
+    addChatMsg('ai', `エラー: ${e.message}`);
+  }
+
+  setAIThinking(false);
+  btn.disabled    = false;
+  btn.textContent = '🤖 AIにコメントさせる';
+
+  // AIセクションまでスクロール
+  document.getElementById('ai-section').scrollIntoView({ behavior: 'smooth' });
 }
 
 // ─── 全ハイライトモーダル ─────────────────────────────
