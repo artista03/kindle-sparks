@@ -270,6 +270,24 @@
     .fav-item-remove:hover { color: var(--text); }
     .fav-count { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
 
+    /* ── 本の星ボタン ── */
+    .book-star-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 15px; line-height: 1; white-space: nowrap;
+      color: #6a5e52; padding: 2px 4px;
+      transition: color 0.15s;
+      flex-shrink: 0; margin-top: 2px;
+    }
+    .book-star-btn:hover  { color: #c8a06a; }
+    .book-star-btn.active { color: #f5c842; }
+
+    /* お気に入りセクション見出し */
+    .fav-section-label {
+      font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1px;
+      margin: 16px 0 8px;
+    }
+
     /* ── 全ハイライトモーダル ── */
     #all-hl-modal {
       display: none;
@@ -382,13 +400,16 @@
 
   <!-- ハイライトカード -->
   <div class="highlight-card" id="hl-card">
-    <div class="book-meta">
-      <div class="book-title" id="hl-title" onclick="showAllHighlights()" style="cursor:pointer" title="タップで全ハイライト表示">―</div>
-      <div class="book-author" id="hl-author">―</div>
+    <div class="book-meta" style="display:flex;align-items:flex-start;gap:8px">
+      <div style="flex:1">
+        <div class="book-title" id="hl-title" onclick="showAllHighlights()" style="cursor:pointer" title="タップで全ハイライト表示">―</div>
+        <div class="book-author" id="hl-author">―</div>
+      </div>
+      <button class="book-star-btn" id="book-star-btn" onclick="toggleBookFavorite()" title="本をお気に入り">📚☆</button>
     </div>
     <div class="highlight-text" id="hl-text">ロード中...</div>
     <div class="session-hint" id="hl-session" style="display:none"></div>
-    <button class="star-btn" id="star-btn" onclick="toggleFavorite()" title="お気に入り">☆</button>
+    <button class="star-btn" id="star-btn" onclick="toggleFavorite()" title="このハイライトをお気に入り">☆</button>
   </div>
 
   <div id="btn-next-container">
@@ -433,7 +454,8 @@ let BOOKS      = [];
 let HIGHLIGHTS = [];
 let SESSIONS   = [];
 let GROQ_KEY   = '';
-let FAVORITES  = [];  // [{b, h, savedAt}]
+let FAVORITES      = [];  // [{b, h, savedAt}]
+let FAV_BOOKS      = [];  // [bookId, ...]
 
 // ─── 状態 ──────────────────────────────────────────
 let currentHL    = null;  // {b, h}
@@ -448,6 +470,7 @@ let sameBookIdx  = 0;
 window.addEventListener('DOMContentLoaded', async () => {
   GROQ_KEY  = localStorage.getItem('gemini_key') || '';
   FAVORITES = JSON.parse(localStorage.getItem('kindle_favorites') || '[]');
+  FAV_BOOKS = JSON.parse(localStorage.getItem('kindle_fav_books') || '[]');
   if (!GROQ_KEY) {
     hide('loading-screen');
     show('setup-screen');
@@ -520,6 +543,7 @@ function showHighlight(hl) {
 
     // 星の状態を更新
     updateStarBtn();
+    updateBookStarBtn();
 
     card.classList.remove('fade');
   }, 150);
@@ -780,43 +804,119 @@ function updateStarBtn() {
   btn.classList.toggle('active', faved);
 }
 
+// ─── 本のお気に入り ──────────────────────────────────
+function isBookFavorited(bookId) {
+  return FAV_BOOKS.includes(bookId);
+}
+
+function toggleBookFavorite() {
+  if (!currentHL) return;
+  const bId = currentHL.b;
+  const idx = FAV_BOOKS.indexOf(bId);
+  if (idx === -1) {
+    FAV_BOOKS.unshift(bId);
+  } else {
+    FAV_BOOKS.splice(idx, 1);
+  }
+  localStorage.setItem('kindle_fav_books', JSON.stringify(FAV_BOOKS));
+  updateBookStarBtn();
+  updateFavBadge();
+}
+
+function updateBookStarBtn() {
+  const btn = document.getElementById('book-star-btn');
+  if (!btn || !currentHL) return;
+  const faved = isBookFavorited(currentHL.b);
+  btn.textContent = faved ? '📚★' : '📚☆';
+  btn.classList.toggle('active', faved);
+}
+
 function updateFavBadge() {
   const badge = document.getElementById('fav-badge');
-  if (badge) badge.textContent = FAVORITES.length > 0 ? `(${FAVORITES.length})` : '';
+  const total = FAVORITES.length + FAV_BOOKS.length;
+  if (badge) badge.textContent = total > 0 ? `(${total})` : '';
 }
 
 function renderFavorites() {
-  const list = document.getElementById('fav-list');
+  const list    = document.getElementById('fav-list');
   const countEl = document.getElementById('fav-count');
-  if (!FAVORITES.length) {
+  const total   = FAVORITES.length + FAV_BOOKS.length;
+
+  if (!total) {
     countEl.textContent = '';
-    list.innerHTML = '<div class="fav-empty">まだお気に入りがありません<br>★ を押して登録してください</div>';
+    list.innerHTML = '<div class="fav-empty">まだお気に入りがありません<br>📚☆ で本を、☆ でハイライトを登録</div>';
     return;
   }
-  countEl.textContent = `${FAVORITES.length} 件`;
+  countEl.textContent = `${total} 件`;
   list.innerHTML = '';
-  FAVORITES.forEach((fav, i) => {
-    const book = BOOKS[fav.b];
-    const div  = document.createElement('div');
-    div.className = 'fav-item';
-    div.innerHTML = `
-      <div class="fav-item-title">${escHtml(book?.title || '不明')} <span style="color:var(--muted);font-weight:400">/ ${escHtml(book?.author || '')}</span></div>
-      <div class="fav-item-text">${escHtml(fav.h)}</div>
-      <button class="fav-item-remove" onclick="removeFav(${i}, event)" title="削除">✕</button>
-    `;
-    div.addEventListener('click', (e) => {
-      if (e.target.classList.contains('fav-item-remove')) return;
-      switchTab('random');
-      showHighlight(fav);
+
+  // ─ お気に入りの本 ─
+  if (FAV_BOOKS.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'fav-section-label';
+    lbl.textContent = `📚 本 (${FAV_BOOKS.length})`;
+    list.appendChild(lbl);
+
+    FAV_BOOKS.forEach((bId, i) => {
+      const book = BOOKS[bId];
+      const cnt  = HIGHLIGHTS.filter(h => h.b === bId).length;
+      const div  = document.createElement('div');
+      div.className = 'fav-item';
+      div.innerHTML = `
+        <div class="fav-item-title">${escHtml(book?.title || '不明')}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">${escHtml(book?.author || '')} &nbsp;·&nbsp; ${cnt} ハイライト</div>
+        <button class="fav-item-remove" onclick="removeBookFav(${i}, event)" title="削除">✕</button>
+      `;
+      div.addEventListener('click', (e) => {
+        if (e.target.classList.contains('fav-item-remove')) return;
+        const pool = HIGHLIGHTS.filter(h => h.b === bId);
+        if (!pool.length) return;
+        switchTab('random');
+        showHighlight(pool[Math.floor(Math.random() * pool.length)]);
+      });
+      list.appendChild(div);
     });
-    list.appendChild(div);
-  });
+  }
+
+  // ─ お気に入りのハイライト ─
+  if (FAVORITES.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'fav-section-label';
+    lbl.textContent = `★ ハイライト (${FAVORITES.length})`;
+    list.appendChild(lbl);
+
+    FAVORITES.forEach((fav, i) => {
+      const book = BOOKS[fav.b];
+      const div  = document.createElement('div');
+      div.className = 'fav-item';
+      div.innerHTML = `
+        <div class="fav-item-title">${escHtml(book?.title || '不明')} <span style="color:var(--muted);font-weight:400">/ ${escHtml(book?.author || '')}</span></div>
+        <div class="fav-item-text">${escHtml(fav.h)}</div>
+        <button class="fav-item-remove" onclick="removeFav(${i}, event)" title="削除">✕</button>
+      `;
+      div.addEventListener('click', (e) => {
+        if (e.target.classList.contains('fav-item-remove')) return;
+        switchTab('random');
+        showHighlight(fav);
+      });
+      list.appendChild(div);
+    });
+  }
 }
 
 function removeFav(idx, e) {
   e.stopPropagation();
   FAVORITES.splice(idx, 1);
   localStorage.setItem('kindle_favorites', JSON.stringify(FAVORITES));
+  updateFavBadge();
+  renderFavorites();
+}
+
+function removeBookFav(idx, e) {
+  e.stopPropagation();
+  FAV_BOOKS.splice(idx, 1);
+  localStorage.setItem('kindle_fav_books', JSON.stringify(FAV_BOOKS));
+  updateBookStarBtn();
   updateFavBadge();
   renderFavorites();
 }
