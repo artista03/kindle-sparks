@@ -135,7 +135,7 @@
       border-radius: 12px;
       padding: 16px;
       margin-bottom: 12px;
-      max-height: 400px;
+      max-height: 60vh;
       overflow-y: auto;
     }
     .chat-msg { margin-bottom: 16px; }
@@ -752,17 +752,17 @@ function escHtml(s) {
 
 function renderMarkdown(s) {
   return escHtml(s)
-    // 見出し ## → 太字+改行
-    .replace(/^## (.+)$/gm, '<strong style="font-size:15px;color:var(--accent2)">$1</strong>')
-    .replace(/^# (.+)$/gm,  '<strong style="font-size:16px;color:var(--accent2)">$1</strong>')
-    // **太字**
+    // 見出し ### ## # の順に（長い方から）
+    .replace(/^###+ (.+)$/gm, '<strong style="font-size:14px;color:var(--accent2);display:block;margin-top:10px">$1</strong>')
+    .replace(/^## (.+)$/gm,   '<strong style="font-size:15px;color:var(--accent2);display:block;margin-top:12px">$1</strong>')
+    .replace(/^# (.+)$/gm,    '<strong style="font-size:16px;color:var(--accent2);display:block;margin-top:14px">$1</strong>')
+    // **太字**（先に処理）
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // *斜体*
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // 箇条書き
+    // 箇条書き（* または - または ・ で始まる行）
+    .replace(/^\* (.+)$/gm,  '&nbsp;&nbsp;• $1')
     .replace(/^[-・] (.+)$/gm, '&nbsp;&nbsp;• $1')
     // 番号付きリスト
-    .replace(/^(\d+)\. (.+)$/gm, '<strong style="color:var(--muted)">$1.</strong> $2')
+    .replace(/^(\d+)\. (.+)$/gm, '<strong style="color:var(--accent)">$1.</strong> $2')
     // 改行
     .replace(/\n/g, '<br>');
 }
