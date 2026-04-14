@@ -673,7 +673,7 @@ function chatKeydown(e) {
   }
 }
 
-async function callGemini(messages, maxTokens = 800) {
+async function callGemini(messages, maxTokens = 1500) {
   // OpenAI形式 → Gemini形式に変換
   const contents = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
@@ -731,7 +731,7 @@ function addChatMsg(role, text) {
   div.className = 'chat-msg';
   div.innerHTML = `
     <div class="chat-role ${role}">${role === 'user' ? '今井' : 'AI'}</div>
-    <div class="chat-body">${escHtml(text)}</div>
+    <div class="chat-body">${role === 'ai' ? renderMarkdown(text) : escHtml(text).replace(/\n/g,'<br>')}</div>
   `;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
@@ -747,8 +747,24 @@ function setAIThinking(on) {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-          .replace(/\n/g,'<br>');
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(s) {
+  return escHtml(s)
+    // 見出し ## → 太字+改行
+    .replace(/^## (.+)$/gm, '<strong style="font-size:15px;color:var(--accent2)">$1</strong>')
+    .replace(/^# (.+)$/gm,  '<strong style="font-size:16px;color:var(--accent2)">$1</strong>')
+    // **太字**
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // *斜体*
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // 箇条書き
+    .replace(/^[-・] (.+)$/gm, '&nbsp;&nbsp;• $1')
+    // 番号付きリスト
+    .replace(/^(\d+)\. (.+)$/gm, '<strong style="color:var(--muted)">$1.</strong> $2')
+    // 改行
+    .replace(/\n/g, '<br>');
 }
 
 // ─── セットアップ ────────────────────────────────────
@@ -977,7 +993,7 @@ ${hlBlock}
   chatMessages.push({ role: 'user', content: prompt });
 
   try {
-    const reply = await callGemini(chatMessages, 1000);
+    const reply = await callGemini(chatMessages, 2500);
     chatMessages.push({ role: 'assistant', content: reply });
     addChatMsg('ai', reply);
   } catch(e) {
