@@ -372,9 +372,9 @@
 <!-- セットアップ -->
 <div id="setup-screen">
   <p class="setup-title">📚 Kindle Sparks</p>
-  <p class="setup-desc">Groq APIキーを入力してください。<br>筋トレログと同じキーを使えます。</p>
-  <p class="setup-label">Groq API Key</p>
-  <input type="password" id="setup-key" placeholder="gsk_...">
+  <p class="setup-desc">Google Gemini APIキーを入力してください。<br>aistudio.google.com/apikey で取得できます。</p>
+  <p class="setup-label">Google Gemini API Key</p>
+  <input type="password" id="setup-key" placeholder="AIzaSy...">
   <button class="btn-primary" onclick="saveSetup()">はじめる</button>
 </div>
 
@@ -464,7 +464,7 @@
 let BOOKS      = [];
 let HIGHLIGHTS = [];
 let SESSIONS   = [];
-let GROQ_KEY   = '';
+let GEMINI_KEY = '';
 let FAVORITES      = [];  // [{b, h, savedAt}]
 let FAV_BOOKS      = [];  // [bookId, ...]
 
@@ -479,10 +479,10 @@ let sameBookIdx  = 0;
 
 // ─── 初期化 ─────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  GROQ_KEY  = localStorage.getItem('gemini_key') || '';
-  FAVORITES = JSON.parse(localStorage.getItem('kindle_favorites') || '[]');
-  FAV_BOOKS = JSON.parse(localStorage.getItem('kindle_fav_books') || '[]');
-  if (!GROQ_KEY) {
+  GEMINI_KEY = localStorage.getItem('google_key') || '';
+  FAVORITES  = JSON.parse(localStorage.getItem('kindle_favorites') || '[]');
+  FAV_BOOKS  = JSON.parse(localStorage.getItem('kindle_fav_books') || '[]');
+  if (!GEMINI_KEY) {
     hide('loading-screen');
     show('setup-screen');
     return;
@@ -635,7 +635,7 @@ ${quoteBlock}
   chatMessages.push({ role: 'user', content: prompt });
 
   try {
-    const reply = await callGroq(chatMessages);
+    const reply = await callGemini(chatMessages);
     chatMessages.push({ role: 'assistant', content: reply });
     addChatMsg('ai', reply);
   } catch(e) {
@@ -656,7 +656,7 @@ async function sendChat() {
   document.getElementById('btn-send').disabled = true;
 
   try {
-    const reply = await callGroq(chatMessages);
+    const reply = await callGemini(chatMessages);
     chatMessages.push({ role: 'assistant', content: reply });
     addChatMsg('ai', reply);
   } catch(e) {
@@ -673,23 +673,27 @@ function chatKeydown(e) {
   }
 }
 
-async function callGroq(messages, maxTokens = 800) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.85
-    })
-  });
+async function callGemini(messages, maxTokens = 800) {
+  // OpenAI形式 → Gemini形式に変換
+  const contents = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }]
+  }));
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents,
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.85 }
+      })
+    }
+  );
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  return data.choices?.[0]?.message?.content || '';
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // ─── Obsidianコピー ──────────────────────────────────
@@ -751,15 +755,15 @@ function escHtml(s) {
 function saveSetup() {
   const key = document.getElementById('setup-key').value.trim();
   if (!key) { alert('APIキーを入力してください'); return; }
-  localStorage.setItem('gemini_key', key);
-  GROQ_KEY = key;
+  localStorage.setItem('google_key', key);
+  GEMINI_KEY = key;
   hide('setup-screen');
   show('loading-screen');
   loadData();
 }
 
 function showSetup() {
-  document.getElementById('setup-key').value = GROQ_KEY;
+  document.getElementById('setup-key').value = GEMINI_KEY;
   hide('main-screen');
   show('setup-screen');
 }
@@ -973,7 +977,7 @@ ${hlBlock}
   chatMessages.push({ role: 'user', content: prompt });
 
   try {
-    const reply = await callGroq(chatMessages, 1000);
+    const reply = await callGemini(chatMessages, 1000);
     chatMessages.push({ role: 'assistant', content: reply });
     addChatMsg('ai', reply);
   } catch(e) {
