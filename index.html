@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kindle Sparks</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #121010;
+      --card:    #1e1a18;
+      --card2:   #272220;
+      --text:    #f0e6d3;
+      --muted:   #7a6e65;
+      --accent:  #c8974f;
+      --accent2: #e8b870;
+      --ai:      #4fa8c8;
+      --border:  #332e2a;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px 16px 40px;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    /* ── ローディング ── */
+    #loading-screen {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 999;
+    }
+    .loading-title { font-size: 22px; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+    .loading-sub   { font-size: 13px; color: var(--muted); }
+    .loading-bar   { width: 200px; height: 3px; background: var(--border); border-radius: 2px; margin-top: 20px; overflow: hidden; }
+    .loading-fill  { height: 100%; background: var(--accent); width: 0; transition: width 0.3s; }
+
+    /* ── セットアップ ── */
+    #setup-screen { display: none; }
+    .setup-title { font-size: 20px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+    .setup-desc  { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+    .setup-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* ── メイン ── */
+    #main-screen { display: none; }
+
+    .app-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .app-title { font-size: 16px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+    .count-badge {
+      font-size: 11px; color: var(--muted);
+      background: var(--card); padding: 4px 10px; border-radius: 20px;
+    }
+
+    /* ハイライトカード */
+    .highlight-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px 20px;
+      margin-bottom: 16px;
+      position: relative;
+      min-height: 160px;
+      transition: opacity 0.25s;
+    }
+    .highlight-card.fade { opacity: 0; }
+    .book-meta { margin-bottom: 14px; }
+    .book-title  { font-size: 13px; font-weight: 600; color: var(--accent); line-height: 1.4; }
+    .book-author { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .highlight-text {
+      font-size: 18px; line-height: 1.75;
+      color: var(--text);
+      border-left: 3px solid var(--accent);
+      padding-left: 14px;
+    }
+    .session-hint {
+      font-size: 11px; color: var(--muted);
+      margin-top: 14px; padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ボタン類 */
+    .btn-next {
+      width: 100%; padding: 16px;
+      background: var(--accent);
+      color: #1a1410; font-size: 16px; font-weight: 700;
+      border: none; border-radius: 12px; cursor: pointer;
+      margin-bottom: 10px;
+      transition: background 0.15s;
+    }
+    .btn-next:active { background: var(--accent2); }
+
+    .btn-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .btn-sm {
+      flex: 1; padding: 11px 8px;
+      background: var(--card2); color: var(--text);
+      font-size: 13px; font-weight: 600;
+      border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .btn-sm:hover  { border-color: var(--accent); }
+    .btn-sm:active { background: #302820; }
+    .btn-sm.ai-btn { color: var(--ai); border-color: #2a4a5a; }
+    .btn-sm.ai-btn:hover { border-color: var(--ai); }
+
+    /* AI セクション */
+    #ai-section { display: none; }
+
+    .ai-header {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--ai);
+      margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px;
+    }
+    .ai-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--ai);
+    }
+    .ai-dot.thinking {
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    .chat-log {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .chat-msg { margin-bottom: 16px; }
+    .chat-msg:last-child { margin-bottom: 0; }
+    .chat-role {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 5px;
+    }
+    .chat-role.user { color: var(--accent); }
+    .chat-role.ai   { color: var(--ai); }
+    .chat-body { font-size: 14px; line-height: 1.7; }
+
+    .chat-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .chat-input {
+      flex: 1;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text); font-size: 14px;
+      padding: 10px 12px;
+    }
+    .chat-input:focus { outline: none; border-color: var(--ai); }
+    .btn-send {
+      padding: 10px 18px;
+      background: var(--ai); color: #fff;
+      font-size: 14px; font-weight: 600;
+      border: none; border-radius: 10px; cursor: pointer;
+    }
+    .btn-send:disabled { opacity: 0.4; cursor: default; }
+
+    .btn-copy {
+      width: 100%; padding: 11px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted); font-size: 13px;
+      border-radius: 10px; cursor: pointer;
+      margin-bottom: 16px;
+    }
+    .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* 設定ボタン */
+    .gear-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 18px; padding: 4px;
+    }
+
+    /* 共通入力 */
+    input[type="text"], input[type="password"] {
+      width: 100%; background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text);
+      font-size: 15px; padding: 12px 14px;
+      margin-bottom: 12px;
+    }
+    input::placeholder { color: var(--muted); }
+
+    .btn-primary {
+      width: 100%; padding: 14px;
+      background: var(--accent); color: #1a1410;
+      font-size: 16px; font-weight: 700;
+      border: none; border-radius: 12px; cursor: pointer;
+      margin-top: 4px;
+    }
+
+    .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+    /* stats */
+    .stats-row {
+      display: flex; gap: 8px; margin-bottom: 16px;
+    }
+    .stat-chip {
+      flex: 1; background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px;
+      text-align: center;
+    }
+    .stat-num { font-size: 18px; font-weight: 700; color: var(--accent); }
+    .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- ローディング -->
+<div id="loading-screen">
+  <div class="loading-title">📚 KINDLE SPARKS</div>
+  <div class="loading-sub">ハイライトを読み込んでいます...</div>
+  <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
+</div>
+
+<!-- セットアップ -->
+<div id="setup-screen">
+  <p class="setup-title">📚 Kindle Sparks</p>
+  <p class="setup-desc">Groq APIキーを入力してください。<br>筋トレログと同じキーを使えます。</p>
+  <p class="setup-label">Groq API Key</p>
+  <input type="password" id="setup-key" placeholder="gsk_...">
+  <button class="btn-primary" onclick="saveSetup()">はじめる</button>
+</div>
+
+<!-- メイン -->
+<div id="main-screen">
+  <div class="app-header">
+    <div class="app-title">📚 KINDLE SPARKS</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="count-badge" id="view-count">0 件目</div>
+      <button class="gear-btn" onclick="showSetup()" title="設定">⚙️</button>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-chip">
+      <div class="stat-num" id="stat-books">-</div>
+      <div class="stat-lbl">冊</div>
+    </div>
+    <div class="stat-chip">
+      <div class="stat-num" id="stat-hl">-</div>
+      <div class="stat-lbl">ハイライト</div>
+    </div>
+    <div class="stat-chip">
+      <div class="stat-num" id="stat-sessions">-</div>
+      <div class="stat-lbl">壁打ち</div>
+    </div>
+  </div>
+
+  <!-- ハイライトカード -->
+  <div class="highlight-card" id="hl-card">
+    <div class="book-meta">
+      <div class="book-title"  id="hl-title">―</div>
+      <div class="book-author" id="hl-author">―</div>
+    </div>
+    <div class="highlight-text" id="hl-text">ロード中...</div>
+    <div class="session-hint" id="hl-session" style="display:none"></div>
+  </div>
+
+  <button class="btn-next" onclick="nextHighlight()">次のハイライト →</button>
+
+  <div class="btn-row">
+    <button class="btn-sm ai-btn" onclick="startAI()">🤖 AIに連想させる</button>
+    <button class="btn-sm" onclick="sameBook()">📖 この本をもっと</button>
+    <button class="btn-sm" onclick="sessionReplay()">🔁 壁打ち再生</button>
+  </div>
+
+  <!-- AIセクション -->
+  <div id="ai-section">
+    <div class="ai-header">
+      <div class="ai-dot" id="ai-dot"></div>
+      <span id="ai-status">AI 連想モード</span>
+    </div>
+
+    <div class="chat-log" id="chat-log"></div>
+
+    <div class="chat-input-row">
+      <input type="text" class="chat-input" id="chat-input"
+             placeholder="続けて聞く..." onkeydown="chatKeydown(event)">
+      <button class="btn-send" id="btn-send" onclick="sendChat()">送信</button>
+    </div>
+
+    <button class="btn-copy" onclick="copyToObsidian()">📋 Obsidianにコピー</button>
+    <div class="divider"></div>
+  </div>
+</div>
+
+<script>
+// ─── データ ────────────────────────────────────────
+let BOOKS      = [];
+let HIGHLIGHTS = [];
+let SESSIONS   = [];
+let GROQ_KEY   = '';
+
+// ─── 状態 ──────────────────────────────────────────
+let currentHL    = null;  // {b, h}
+let viewCount    = 0;
+let history      = [];    // 戻れる履歴
+let chatMessages = [];    // AIチャット履歴
+let sameBookMode = false;
+let sameBookIds  = [];
+let sameBookIdx  = 0;
+
+// ─── 初期化 ─────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  GROQ_KEY = localStorage.getItem('gemini_key') || '';
+  if (!GROQ_KEY) {
+    hide('loading-screen');
+    show('setup-screen');
+    return;
+  }
+  await loadData();
+});
+
+async function loadData() {
+  const fill = document.getElementById('loading-fill');
+  try {
+    fill.style.width = '30%';
+    const [bRes, hRes, sRes] = await Promise.all([
+      fetch('./books.json'),
+      fetch('./highlights.json'),
+      fetch('./sessions.json')
+    ]);
+    fill.style.width = '70%';
+    BOOKS      = await bRes.json();
+    HIGHLIGHTS = await hRes.json();
+    SESSIONS   = await sRes.json();
+    fill.style.width = '100%';
+
+    document.getElementById('stat-books').textContent    = BOOKS.length.toLocaleString();
+    document.getElementById('stat-hl').textContent       = HIGHLIGHTS.length.toLocaleString();
+    document.getElementById('stat-sessions').textContent = SESSIONS.length;
+
+    setTimeout(() => {
+      hide('loading-screen');
+      show('main-screen');
+      nextHighlight();
+    }, 300);
+  } catch(e) {
+    document.querySelector('.loading-sub').textContent = 'エラー: ' + e.message;
+  }
+}
+
+// ─── ハイライト表示 ─────────────────────────────────
+function nextHighlight() {
+  sameBookMode = false;
+  const idx = Math.floor(Math.random() * HIGHLIGHTS.length);
+  showHighlight(HIGHLIGHTS[idx]);
+}
+
+function showHighlight(hl) {
+  const card = document.getElementById('hl-card');
+  card.classList.add('fade');
+  setTimeout(() => {
+    currentHL = hl;
+    history.push(hl);
+    if (history.length > 20) history.shift();
+    viewCount++;
+
+    const book = BOOKS[hl.b];
+    document.getElementById('hl-title').textContent  = book?.title  || '―';
+    document.getElementById('hl-author').textContent = book?.author || '―';
+    document.getElementById('hl-text').textContent   = hl.h;
+    document.getElementById('view-count').textContent = viewCount + ' 件目';
+
+    // 壁打ちセッションヒント
+    const hintEl = document.getElementById('hl-session');
+    const relSession = SESSIONS.find(s => s.book_ids?.includes(hl.b));
+    if (relSession) {
+      hintEl.textContent = `💬 壁打ち「${relSession.session}」でこの本が使われています`;
+      hintEl.style.display = 'block';
+    } else {
+      hintEl.style.display = 'none';
+    }
+
+    card.classList.remove('fade');
+  }, 150);
+}
+
+// ─── この本をもっと ──────────────────────────────────
+function sameBook() {
+  if (!currentHL) return;
+  const bId = currentHL.b;
+  sameBookIds = HIGHLIGHTS
+    .map((h, i) => ({...h, i}))
+    .filter(h => h.b === bId && h.h !== currentHL.h);
+  if (!sameBookIds.length) { alert('この本のハイライトはこれだけです'); return; }
+  sameBookMode = true;
+  sameBookIdx  = 0;
+  shuffle(sameBookIds);
+  showHighlight(sameBookIds[sameBookIdx]);
+  sameBookIdx++;
+  if (sameBookIdx >= sameBookIds.length) sameBookIdx = 0;
+}
+
+// ─── 壁打ち再生 ──────────────────────────────────────
+function sessionReplay() {
+  if (!currentHL) return;
+  const relSession = SESSIONS.find(s => s.book_ids?.includes(currentHL.b));
+  if (!relSession) {
+    alert('この本はまだ壁打ちセッションで使われていません。「AIに連想させる」を試してみてください。');
+    return;
+  }
+  // セッションで使われた本からランダムにハイライトを表示
+  const bookIds = relSession.book_ids.filter(id => id !== currentHL.b);
+  if (!bookIds.length) { nextHighlight(); return; }
+  const bId = bookIds[Math.floor(Math.random() * bookIds.length)];
+  const pool = HIGHLIGHTS.filter(h => h.b === bId);
+  if (pool.length) showHighlight(pool[Math.floor(Math.random() * pool.length)]);
+}
+
+// ─── AI 連想 ─────────────────────────────────────────
+async function startAI() {
+  if (!currentHL) return;
+  chatMessages = [];
+
+  // 現在のハイライト + ランダムに2件追加
+  const seeds = [currentHL];
+  const extra = HIGHLIGHTS
+    .filter(h => h.b !== currentHL.b)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 2);
+  seeds.push(...extra);
+
+  const quoteBlock = seeds.map((h, i) => {
+    const book = BOOKS[h.b];
+    return `【引用${i+1}】『${book?.title}』（${book?.author}）\n"${h.h}"`;
+  }).join('\n\n');
+
+  const prompt = `あなたは今井陽介（46歳・軽井沢在住・ビットコイン長期保有者・哲学愛好家）の思考パートナーです。
+
+以下の${seeds.length}つのKindleハイライトを読んで、それらのシナジー・矛盾・深い連想を日本語で語ってください。
+
+${quoteBlock}
+
+【ルール】
+- 今井さんへの直接の言葉として語る（「今井さん、」と呼びかけてもいい）
+- ビットコイン・塩飽水軍・旦那衆・マクロ経済・自由への意志などのテーマと接続できれば積極的にする
+- 結論から言う。短く、歯切れよく
+- 「次の壁打ちセッション」のたたき台として使えるアウトプットにする
+- 3〜5段落で`;
+
+  show('ai-section');
+  clearChat();
+  setAIThinking(true);
+
+  // ユーザー側に引用を表示
+  addChatMsg('user', `引用 ${seeds.length} 件を送信しました:\n` + seeds.map((h,i)=>
+    `${i+1}. 『${BOOKS[h.b]?.title}』— ${h.h.slice(0,40)}…`
+  ).join('\n'));
+
+  chatMessages.push({ role: 'user', content: prompt });
+
+  try {
+    const reply = await callGroq(chatMessages);
+    chatMessages.push({ role: 'assistant', content: reply });
+    addChatMsg('ai', reply);
+  } catch(e) {
+    addChatMsg('ai', `エラー: ${e.message}`);
+  }
+  setAIThinking(false);
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  addChatMsg('user', text);
+  chatMessages.push({ role: 'user', content: text });
+  setAIThinking(true);
+  document.getElementById('btn-send').disabled = true;
+
+  try {
+    const reply = await callGroq(chatMessages);
+    chatMessages.push({ role: 'assistant', content: reply });
+    addChatMsg('ai', reply);
+  } catch(e) {
+    addChatMsg('ai', `エラー: ${e.message}`);
+  }
+  setAIThinking(false);
+  document.getElementById('btn-send').disabled = false;
+}
+
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.isComposing && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
+}
+
+async function callGroq(messages, maxTokens = 800) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      max_tokens: maxTokens,
+      temperature: 0.85
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.choices?.[0]?.message?.content || '';
+}
+
+// ─── Obsidianコピー ──────────────────────────────────
+function copyToObsidian() {
+  const now     = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const book    = BOOKS[currentHL?.b];
+
+  let md = `---\ntags: [壁打ち, AI連想, KindleSparks]\ncreated: ${dateStr}\n---\n\n`;
+  md += `# Kindle Sparks AI連想｜${dateStr}\n\n`;
+  md += `## ベースハイライト\n**『${book?.title}』（${book?.author}）**\n> ${currentHL?.h}\n\n`;
+  md += `## AI連想ディスカッション\n\n`;
+
+  for (const msg of chatMessages) {
+    if (msg.role === 'user') {
+      md += `### 今井\n${msg.content}\n\n`;
+    } else {
+      md += `### AI\n${msg.content}\n\n`;
+    }
+  }
+
+  navigator.clipboard.writeText(md).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    btn.textContent = '✅ コピー完了！Obsidianに貼り付けてください';
+    setTimeout(() => { btn.textContent = '📋 Obsidianにコピー'; }, 3000);
+  }).catch(() => {
+    alert('コピーできませんでした。手動でテキストを選択してください。');
+  });
+}
+
+// ─── チャットUI ─────────────────────────────────────
+function addChatMsg(role, text) {
+  const log  = document.getElementById('chat-log');
+  const div  = document.createElement('div');
+  div.className = 'chat-msg';
+  div.innerHTML = `
+    <div class="chat-role ${role}">${role === 'user' ? '今井' : 'AI'}</div>
+    <div class="chat-body">${escHtml(text)}</div>
+  `;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearChat() {
+  document.getElementById('chat-log').innerHTML = '';
+}
+
+function setAIThinking(on) {
+  document.getElementById('ai-dot').classList.toggle('thinking', on);
+  document.getElementById('ai-status').textContent = on ? '考え中...' : 'AI 連想モード';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/\n/g,'<br>');
+}
+
+// ─── セットアップ ────────────────────────────────────
+function saveSetup() {
+  const key = document.getElementById('setup-key').value.trim();
+  if (!key) { alert('APIキーを入力してください'); return; }
+  localStorage.setItem('gemini_key', key);
+  GROQ_KEY = key;
+  hide('setup-screen');
+  show('loading-screen');
+  loadData();
+}
+
+function showSetup() {
+  document.getElementById('setup-key').value = GROQ_KEY;
+  hide('main-screen');
+  show('setup-screen');
+}
+
+// ─── ユーティリティ ──────────────────────────────────
+function show(id) { document.getElementById(id).style.display = 'block'; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+</script>
+</body>
+</html>
