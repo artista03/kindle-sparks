@@ -235,12 +235,13 @@
     .star-btn {
       position: absolute; top: 14px; right: 14px;
       background: none; border: none; cursor: pointer;
-      font-size: 22px; line-height: 1;
-      opacity: 0.4; transition: opacity 0.15s, transform 0.15s;
+      font-size: 24px; line-height: 1;
+      color: #6a5e52;
+      transition: color 0.15s, transform 0.15s;
       padding: 2px;
     }
-    .star-btn:hover  { opacity: 0.8; }
-    .star-btn.active { opacity: 1; transform: scale(1.15); }
+    .star-btn:hover  { color: #c8a06a; }
+    .star-btn.active { color: #f5c842; transform: scale(1.15); }
 
     /* ── お気に入り一覧 ── */
     #fav-section { display: none; }
@@ -777,7 +778,6 @@ function updateStarBtn() {
   const faved = isFavorited(currentHL);
   btn.textContent = faved ? '★' : '☆';
   btn.classList.toggle('active', faved);
-  btn.style.color = faved ? 'var(--accent2)' : '';
 }
 
 function updateFavBadge() {
