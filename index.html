@@ -214,9 +214,69 @@
     }
     .stat-num { font-size: 18px; font-weight: 700; color: var(--accent); }
     .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── 全ハイライトモーダル ── */
+    #all-hl-modal {
+      display: none;
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.75);
+      padding: 16px;
+      overflow-y: auto;
+    }
+    #all-hl-modal.open { display: block; }
+    .modal-inner {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .modal-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 16px; gap: 12px;
+    }
+    .modal-book-title  { font-size: 15px; font-weight: 700; color: var(--accent); line-height: 1.4; }
+    .modal-book-author { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .modal-close {
+      background: var(--card2); border: 1px solid var(--border);
+      color: var(--muted); font-size: 18px;
+      border-radius: 8px; padding: 4px 10px; cursor: pointer;
+      flex-shrink: 0;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-count { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+    .modal-hl-item {
+      border-left: 3px solid var(--border);
+      padding: 10px 0 10px 14px;
+      margin-bottom: 12px;
+      font-size: 15px; line-height: 1.7;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .modal-hl-item:hover { border-color: var(--accent); }
+    .modal-hl-num {
+      font-size: 10px; color: var(--muted);
+      margin-bottom: 4px;
+    }
   </style>
 </head>
 <body>
+
+<!-- 全ハイライトモーダル -->
+<div id="all-hl-modal" onclick="closeModalOutside(event)">
+  <div class="modal-inner">
+    <div class="modal-header">
+      <div>
+        <div class="modal-book-title"  id="modal-title">―</div>
+        <div class="modal-book-author" id="modal-author">―</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-count" id="modal-count"></div>
+    <div id="modal-hl-list"></div>
+  </div>
+</div>
 
 <!-- ローディング -->
 <div id="loading-screen">
@@ -262,7 +322,7 @@
   <!-- ハイライトカード -->
   <div class="highlight-card" id="hl-card">
     <div class="book-meta">
-      <div class="book-title"  id="hl-title">―</div>
+      <div class="book-title" id="hl-title" onclick="showAllHighlights()" style="cursor:pointer" title="タップで全ハイライト表示">―</div>
       <div class="book-author" id="hl-author">―</div>
     </div>
     <div class="highlight-text" id="hl-text">ロード中...</div>
@@ -591,6 +651,44 @@ function showSetup() {
   document.getElementById('setup-key').value = GROQ_KEY;
   hide('main-screen');
   show('setup-screen');
+}
+
+// ─── 全ハイライトモーダル ─────────────────────────────
+function showAllHighlights() {
+  if (!currentHL) return;
+  const book = BOOKS[currentHL.b];
+  if (!book) return;
+
+  const allHL = HIGHLIGHTS.filter(h => h.b === currentHL.b);
+
+  document.getElementById('modal-title').textContent  = book.title;
+  document.getElementById('modal-author').textContent = book.author;
+  document.getElementById('modal-count').textContent  = `全 ${allHL.length} 件のハイライト`;
+
+  const list = document.getElementById('modal-hl-list');
+  list.innerHTML = '';
+  allHL.forEach((h, i) => {
+    const div = document.createElement('div');
+    div.className = 'modal-hl-item';
+    div.innerHTML = `<div class="modal-hl-num"># ${i + 1}</div>${escHtml(h.h)}`;
+    div.addEventListener('click', () => {
+      closeModal();
+      showHighlight(h);
+    });
+    list.appendChild(div);
+  });
+
+  document.getElementById('all-hl-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('all-hl-modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function closeModalOutside(e) {
+  if (e.target === document.getElementById('all-hl-modal')) closeModal();
 }
 
 // ─── ユーティリティ ──────────────────────────────────
