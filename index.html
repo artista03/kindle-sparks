@@ -320,13 +320,14 @@
     .modal-close:hover { color: var(--text); }
     .modal-count { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
     .btn-analyze-book {
+      display: block; width: 100%;
       background: var(--card2); border: 1px solid #2a4a5a;
-      color: var(--ai); font-size: 12px; font-weight: 600;
-      border-radius: 8px; padding: 7px 12px; cursor: pointer;
-      white-space: nowrap;
-      transition: border-color 0.15s;
+      color: var(--ai); font-size: 13px; font-weight: 600;
+      border-radius: 10px; padding: 12px; cursor: pointer;
+      margin-bottom: 14px;
+      transition: border-color 0.15s, background 0.15s;
     }
-    .btn-analyze-book:hover    { border-color: var(--ai); }
+    .btn-analyze-book:hover    { border-color: var(--ai); background: #1a2a35; }
     .btn-analyze-book:disabled { opacity: 0.4; cursor: default; }
     .modal-hl-item {
       border-left: 3px solid var(--border);
@@ -355,10 +356,8 @@
       </div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div class="modal-count" id="modal-count" style="margin-bottom:0"></div>
-      <button class="btn-analyze-book" id="btn-analyze-book" onclick="analyzeBook()">🤖 AIにコメントさせる</button>
-    </div>
+    <div class="modal-count" id="modal-count"></div>
+    <button class="btn-analyze-book" id="btn-analyze-book" onclick="analyzeBook()">🤖 この本のハイライト全部をAIにコメントさせる</button>
     <div id="modal-hl-list"></div>
   </div>
 </div>
