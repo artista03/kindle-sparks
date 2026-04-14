@@ -215,6 +215,60 @@
     .stat-num { font-size: 18px; font-weight: 700; color: var(--accent); }
     .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
+    /* ── タブ ── */
+    .tab-row {
+      display: flex; gap: 6px; margin-bottom: 16px;
+    }
+    .tab-btn {
+      flex: 1; padding: 10px;
+      background: var(--card2); color: var(--muted);
+      font-size: 13px; font-weight: 600;
+      border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab-btn.active {
+      background: var(--card); color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* ── 星ボタン ── */
+    .star-btn {
+      position: absolute; top: 14px; right: 14px;
+      background: none; border: none; cursor: pointer;
+      font-size: 22px; line-height: 1;
+      opacity: 0.4; transition: opacity 0.15s, transform 0.15s;
+      padding: 2px;
+    }
+    .star-btn:hover  { opacity: 0.8; }
+    .star-btn.active { opacity: 1; transform: scale(1.15); }
+
+    /* ── お気に入り一覧 ── */
+    #fav-section { display: none; }
+    .fav-empty {
+      text-align: center; color: var(--muted);
+      font-size: 14px; padding: 40px 0;
+    }
+    .fav-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      position: relative;
+    }
+    .fav-item:hover { border-color: var(--accent); }
+    .fav-item-title  { font-size: 11px; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+    .fav-item-text   { font-size: 14px; line-height: 1.65; border-left: 2px solid var(--border); padding-left: 10px; }
+    .fav-item-remove {
+      position: absolute; top: 10px; right: 10px;
+      background: none; border: none; cursor: pointer;
+      font-size: 14px; color: var(--muted); padding: 2px 6px;
+    }
+    .fav-item-remove:hover { color: var(--text); }
+    .fav-count { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+
     /* ── 全ハイライトモーダル ── */
     #all-hl-modal {
       display: none;
@@ -304,6 +358,12 @@
     </div>
   </div>
 
+  <!-- タブ -->
+  <div class="tab-row">
+    <button class="tab-btn active" id="tab-random" onclick="switchTab('random')">ランダム</button>
+    <button class="tab-btn"        id="tab-fav"    onclick="switchTab('fav')">★ お気に入り <span id="fav-badge"></span></button>
+  </div>
+
   <div class="stats-row">
     <div class="stat-chip">
       <div class="stat-num" id="stat-books">-</div>
@@ -327,14 +387,23 @@
     </div>
     <div class="highlight-text" id="hl-text">ロード中...</div>
     <div class="session-hint" id="hl-session" style="display:none"></div>
+    <button class="star-btn" id="star-btn" onclick="toggleFavorite()" title="お気に入り">☆</button>
   </div>
 
-  <button class="btn-next" onclick="nextHighlight()">次のハイライト →</button>
+  <div id="btn-next-container">
+    <button class="btn-next" onclick="nextHighlight()">次のハイライト →</button>
+  </div>
 
-  <div class="btn-row">
+  <div class="btn-row" id="btn-row-container">
     <button class="btn-sm ai-btn" onclick="startAI()">🤖 AIに連想させる</button>
     <button class="btn-sm" onclick="sameBook()">📖 この本をもっと</button>
     <button class="btn-sm" onclick="sessionReplay()">🔁 壁打ち再生</button>
+  </div>
+
+  <!-- お気に入り一覧 -->
+  <div id="fav-section">
+    <div class="fav-count" id="fav-count"></div>
+    <div id="fav-list"></div>
   </div>
 
   <!-- AIセクション -->
@@ -363,6 +432,7 @@ let BOOKS      = [];
 let HIGHLIGHTS = [];
 let SESSIONS   = [];
 let GROQ_KEY   = '';
+let FAVORITES  = [];  // [{b, h, savedAt}]
 
 // ─── 状態 ──────────────────────────────────────────
 let currentHL    = null;  // {b, h}
@@ -375,7 +445,8 @@ let sameBookIdx  = 0;
 
 // ─── 初期化 ─────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-  GROQ_KEY = localStorage.getItem('gemini_key') || '';
+  GROQ_KEY  = localStorage.getItem('gemini_key') || '';
+  FAVORITES = JSON.parse(localStorage.getItem('kindle_favorites') || '[]');
   if (!GROQ_KEY) {
     hide('loading-screen');
     show('setup-screen');
@@ -406,6 +477,7 @@ async function loadData() {
     setTimeout(() => {
       hide('loading-screen');
       show('main-screen');
+      updateFavBadge();
       nextHighlight();
     }, 300);
   } catch(e) {
@@ -444,6 +516,9 @@ function showHighlight(hl) {
     } else {
       hintEl.style.display = 'none';
     }
+
+    // 星の状態を更新
+    updateStarBtn();
 
     card.classList.remove('fade');
   }, 150);
@@ -651,6 +726,99 @@ function showSetup() {
   document.getElementById('setup-key').value = GROQ_KEY;
   hide('main-screen');
   show('setup-screen');
+}
+
+// ─── タブ切り替え ────────────────────────────────────
+function switchTab(tab) {
+  const isRandom = tab === 'random';
+  document.getElementById('tab-random').classList.toggle('active', isRandom);
+  document.getElementById('tab-fav').classList.toggle('active', !isRandom);
+
+  // ランダムタブ
+  const randomEls = ['stat-row', 'hl-card', 'btn-next-wrap', 'btn-row-wrap', 'ai-section'];
+  document.querySelector('.stats-row').style.display       = isRandom ? 'flex'  : 'none';
+  document.getElementById('hl-card').style.display         = isRandom ? 'block' : 'none';
+  document.getElementById('btn-next-container').style.display = isRandom ? 'block' : 'none';
+  document.getElementById('btn-row-container').style.display  = isRandom ? 'flex'  : 'none';
+  document.getElementById('ai-section').style.display     = isRandom ? (document.getElementById('ai-section').dataset.open ? 'block' : 'none') : 'none';
+
+  // お気に入りタブ
+  document.getElementById('fav-section').style.display = isRandom ? 'none' : 'block';
+  if (!isRandom) renderFavorites();
+}
+
+// ─── お気に入り ──────────────────────────────────────
+function favKey(hl) {
+  return hl.b + '::' + hl.h.slice(0, 40);
+}
+
+function isFavorited(hl) {
+  const key = favKey(hl);
+  return FAVORITES.some(f => favKey(f) === key);
+}
+
+function toggleFavorite() {
+  if (!currentHL) return;
+  const key = favKey(currentHL);
+  const idx = FAVORITES.findIndex(f => favKey(f) === key);
+  if (idx === -1) {
+    FAVORITES.unshift({ b: currentHL.b, h: currentHL.h, savedAt: Date.now() });
+  } else {
+    FAVORITES.splice(idx, 1);
+  }
+  localStorage.setItem('kindle_favorites', JSON.stringify(FAVORITES));
+  updateStarBtn();
+  updateFavBadge();
+}
+
+function updateStarBtn() {
+  const btn = document.getElementById('star-btn');
+  if (!btn || !currentHL) return;
+  const faved = isFavorited(currentHL);
+  btn.textContent = faved ? '★' : '☆';
+  btn.classList.toggle('active', faved);
+  btn.style.color = faved ? 'var(--accent2)' : '';
+}
+
+function updateFavBadge() {
+  const badge = document.getElementById('fav-badge');
+  if (badge) badge.textContent = FAVORITES.length > 0 ? `(${FAVORITES.length})` : '';
+}
+
+function renderFavorites() {
+  const list = document.getElementById('fav-list');
+  const countEl = document.getElementById('fav-count');
+  if (!FAVORITES.length) {
+    countEl.textContent = '';
+    list.innerHTML = '<div class="fav-empty">まだお気に入りがありません<br>★ を押して登録してください</div>';
+    return;
+  }
+  countEl.textContent = `${FAVORITES.length} 件`;
+  list.innerHTML = '';
+  FAVORITES.forEach((fav, i) => {
+    const book = BOOKS[fav.b];
+    const div  = document.createElement('div');
+    div.className = 'fav-item';
+    div.innerHTML = `
+      <div class="fav-item-title">${escHtml(book?.title || '不明')} <span style="color:var(--muted);font-weight:400">/ ${escHtml(book?.author || '')}</span></div>
+      <div class="fav-item-text">${escHtml(fav.h)}</div>
+      <button class="fav-item-remove" onclick="removeFav(${i}, event)" title="削除">✕</button>
+    `;
+    div.addEventListener('click', (e) => {
+      if (e.target.classList.contains('fav-item-remove')) return;
+      switchTab('random');
+      showHighlight(fav);
+    });
+    list.appendChild(div);
+  });
+}
+
+function removeFav(idx, e) {
+  e.stopPropagation();
+  FAVORITES.splice(idx, 1);
+  localStorage.setItem('kindle_favorites', JSON.stringify(FAVORITES));
+  updateFavBadge();
+  renderFavorites();
 }
 
 // ─── 全ハイライトモーダル ─────────────────────────────
