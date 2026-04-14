@@ -987,13 +987,13 @@ ${hlBlock}
 2. **この本から今井さんが持ち帰ったもの**——思想・行動・世界観への影響
 3. **このハイライト群を今の今井さんの状況と接続する**——ビットコイン・軽井沢から京都移住・旦那衆・塩飽水軍などのテーマと絡めて
 
-結論から言う。短く、歯切れよく。`;
+結論から言う。歯切れよく。**必ず3項目すべてを最後まで出力すること。途中で切らない。**`;
 
   addChatMsg('user', `『${book.title}』の全ハイライト${allHL.length}件をAIに送りました`);
   chatMessages.push({ role: 'user', content: prompt });
 
   try {
-    const reply = await callGemini(chatMessages, 2500);
+    const reply = await callGemini(chatMessages, 6000);
     chatMessages.push({ role: 'assistant', content: reply });
     addChatMsg('ai', reply);
   } catch(e) {
