@@ -88,6 +88,44 @@
       border-top: 1px solid var(--border);
     }
 
+    /* ── エンカウントバッジ ── */
+    .encounter-badge {
+      display: inline-block;
+      font-size: 11px; font-weight: 600;
+      padding: 3px 9px; border-radius: 20px;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    .enc-first  { background: #1a2a1a; color: #6abf6a; border: 1px solid #2a5a2a; }
+    .enc-repeat { background: #2a2010; color: #c8a06a; border: 1px solid #5a4020; }
+    .enc-old    { background: #2a1f00; color: #f5c842; border: 1px solid #6a5000; }
+
+    /* ── エンカウント履歴 ── */
+    .enc-history {
+      margin-top: 12px; padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .enc-history-toggle {
+      background: none; border: none; cursor: pointer;
+      font-size: 11px; color: var(--muted); padding: 0;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .enc-history-toggle:hover { color: var(--text); }
+    .enc-history-list {
+      margin-top: 8px; display: none;
+    }
+    .enc-history-list.open { display: block; }
+    .enc-row {
+      display: flex; gap: 10px; align-items: baseline;
+      font-size: 11px; color: var(--muted);
+      padding: 3px 0;
+    }
+    .enc-row-date { color: var(--text); font-weight: 600; min-width: 50px; }
+    .enc-row-mode {
+      background: var(--card2); border-radius: 4px;
+      padding: 1px 6px; font-size: 10px;
+    }
+
     /* ボタン類 */
     .btn-next {
       width: 100%; padding: 16px;
@@ -418,8 +456,16 @@
       </div>
       <button class="book-star-btn" id="book-star-btn" onclick="toggleBookFavorite()" title="本をお気に入り">📚☆</button>
     </div>
+    <div id="enc-badge"></div>
     <div class="highlight-text" id="hl-text">ロード中...</div>
     <div class="session-hint" id="hl-session" style="display:none"></div>
+    <div class="enc-history" id="enc-history" style="display:none">
+      <button class="enc-history-toggle" onclick="toggleEncHistory()">
+        <span id="enc-toggle-arrow">▸</span>
+        <span id="enc-toggle-label">過去の出会い</span>
+      </button>
+      <div class="enc-history-list" id="enc-history-list"></div>
+    </div>
     <button class="star-btn" id="star-btn" onclick="toggleFavorite()" title="このハイライトをお気に入り">☆</button>
   </div>
 
@@ -467,9 +513,11 @@ let SESSIONS   = [];
 let GEMINI_KEY = '';
 let FAVORITES      = [];  // [{b, h, savedAt}]
 let FAV_BOOKS      = [];  // [bookId, ...]
+let ENC_LOG        = {};  // {key: {count, encounters:[{date,mode}]}}
 
 // ─── 状態 ──────────────────────────────────────────
 let currentHL    = null;  // {b, h}
+let currentMode  = 'ランダム';
 let viewCount    = 0;
 let history      = [];    // 戻れる履歴
 let chatMessages = [];    // AIチャット履歴
@@ -482,6 +530,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   GEMINI_KEY = localStorage.getItem('google_key') || '';
   FAVORITES  = JSON.parse(localStorage.getItem('kindle_favorites') || '[]');
   FAV_BOOKS  = JSON.parse(localStorage.getItem('kindle_fav_books') || '[]');
+  ENC_LOG    = JSON.parse(localStorage.getItem('kindle_encounters') || '{}');
   if (!GEMINI_KEY) {
     hide('loading-screen');
     show('setup-screen');
@@ -522,7 +571,8 @@ async function loadData() {
 
 // ─── ハイライト表示 ─────────────────────────────────
 function nextHighlight() {
-  sameBookMode = false;
+  sameBookMode  = false;
+  currentMode   = 'ランダム';
   const idx = Math.floor(Math.random() * HIGHLIGHTS.length);
   showHighlight(HIGHLIGHTS[idx]);
 }
@@ -556,6 +606,10 @@ function showHighlight(hl) {
     updateStarBtn();
     updateBookStarBtn();
 
+    // エンカウント記録・表示
+    recordEncounter(hl, currentMode);
+    renderEncounter(hl);
+
     card.classList.remove('fade');
   }, 150);
 }
@@ -563,6 +617,7 @@ function showHighlight(hl) {
 // ─── この本をもっと ──────────────────────────────────
 function sameBook() {
   if (!currentHL) return;
+  currentMode = '同じ本';
   const bId = currentHL.b;
   sameBookIds = HIGHLIGHTS
     .map((h, i) => ({...h, i}))
@@ -579,6 +634,7 @@ function sameBook() {
 // ─── 壁打ち再生 ──────────────────────────────────────
 function sessionReplay() {
   if (!currentHL) return;
+  currentMode = '壁打ち再生';
   const relSession = SESSIONS.find(s => s.book_ids?.includes(currentHL.b));
   if (!relSession) {
     alert('この本はまだ壁打ちセッションで使われていません。「AIに連想させる」を試してみてください。');
@@ -784,6 +840,73 @@ function showSetup() {
   show('setup-screen');
 }
 
+// ─── エンカウントシステム ─────────────────────────────
+function encKey(hl) {
+  return `${hl.b}::${hl.h.slice(0, 40)}`;
+}
+
+function recordEncounter(hl, mode) {
+  const key  = encKey(hl);
+  const today = new Date().toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+  if (!ENC_LOG[key]) {
+    ENC_LOG[key] = { count: 0, encounters: [] };
+  }
+  ENC_LOG[key].count++;
+  ENC_LOG[key].encounters.unshift({ date: today, mode });
+  // 履歴は最大20件保持
+  if (ENC_LOG[key].encounters.length > 20) ENC_LOG[key].encounters.pop();
+  localStorage.setItem('kindle_encounters', JSON.stringify(ENC_LOG));
+}
+
+function renderEncounter(hl) {
+  const key  = encKey(hl);
+  const data = ENC_LOG[key];
+  // recordEncounterで今回分も含まれている
+  const count = data?.count || 1;
+
+  // バッジ
+  const badge = document.getElementById('enc-badge');
+  if (count === 1) {
+    badge.innerHTML = '<span class="encounter-badge enc-first">✨ 初めてのエンカウント</span>';
+  } else if (count < 5) {
+    badge.innerHTML = `<span class="encounter-badge enc-repeat">再会 ${count}回目</span>`;
+  } else {
+    badge.innerHTML = `<span class="encounter-badge enc-old">⭐ ${count}回目の再会</span>`;
+  }
+
+  // 履歴
+  const histEl   = document.getElementById('enc-history');
+  const histList = document.getElementById('enc-history-list');
+  const toggleLbl = document.getElementById('enc-toggle-label');
+
+  if (count >= 2 && data?.encounters?.length) {
+    // 今回（先頭）を除いた過去分
+    const past = data.encounters.slice(1);
+    if (past.length) {
+      toggleLbl.textContent = `過去の出会い（${past.length}件）`;
+      histList.innerHTML = past.map(e =>
+        `<div class="enc-row">
+          <span class="enc-row-date">${e.date}</span>
+          <span class="enc-row-mode">${e.mode}</span>
+        </div>`
+      ).join('');
+      histEl.style.display = 'block';
+      // 折りたたみは閉じた状態にリセット
+      histList.classList.remove('open');
+      document.getElementById('enc-toggle-arrow').textContent = '▸';
+      return;
+    }
+  }
+  histEl.style.display = 'none';
+}
+
+function toggleEncHistory() {
+  const list  = document.getElementById('enc-history-list');
+  const arrow = document.getElementById('enc-toggle-arrow');
+  const open  = list.classList.toggle('open');
+  arrow.textContent = open ? '▾' : '▸';
+}
+
 // ─── タブ切り替え ────────────────────────────────────
 function switchTab(tab) {
   const isRandom = tab === 'random';
@@ -902,6 +1025,7 @@ function renderFavorites() {
         if (e.target.classList.contains('fav-item-remove')) return;
         const pool = HIGHLIGHTS.filter(h => h.b === bId);
         if (!pool.length) return;
+        currentMode = 'お気に入り本';
         switchTab('random');
         showHighlight(pool[Math.floor(Math.random() * pool.length)]);
       });
@@ -927,6 +1051,7 @@ function renderFavorites() {
       `;
       div.addEventListener('click', (e) => {
         if (e.target.classList.contains('fav-item-remove')) return;
+        currentMode = 'お気に入り';
         switchTab('random');
         showHighlight(fav);
       });
@@ -1027,6 +1152,7 @@ function showAllHighlights() {
     div.className = 'modal-hl-item';
     div.innerHTML = `<div class="modal-hl-num"># ${i + 1}</div>${escHtml(h.h)}`;
     div.addEventListener('click', () => {
+      currentMode = 'ハイライト一覧';
       closeModal();
       showHighlight(h);
     });
