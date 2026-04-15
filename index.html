@@ -308,6 +308,39 @@
     .fav-item-remove:hover { color: var(--text); }
     .fav-count { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
 
+    /* ── 著者リンク ── */
+    .book-author-link {
+      cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .book-author-link:hover { color: var(--text); }
+    .author-count-badge {
+      font-size: 10px; background: var(--card2);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 1px 6px; color: var(--muted);
+      transition: border-color 0.15s;
+    }
+    .book-author-link:hover .author-count-badge { border-color: var(--accent); color: var(--accent); }
+
+    /* ── 著者モーダル ── */
+    #author-modal {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.75); padding: 16px; overflow-y: auto;
+    }
+    #author-modal.open { display: block; }
+    .author-book-item {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--card2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+      cursor: pointer; gap: 10px;
+      transition: border-color 0.15s;
+    }
+    .author-book-item:hover { border-color: var(--accent); }
+    .author-book-title { font-size: 13px; line-height: 1.45; flex: 1; }
+    .author-book-hl-count {
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+      background: var(--card); border-radius: 8px; padding: 3px 8px;
+    }
+
     /* ── 本の星ボタン ── */
     .book-star-btn {
       background: none; border: none; cursor: pointer;
@@ -384,6 +417,20 @@
 </head>
 <body>
 
+<!-- 著者モーダル -->
+<div id="author-modal" onclick="closeAuthorModalOutside(event)">
+  <div class="modal-inner">
+    <div class="modal-header">
+      <div>
+        <div class="modal-book-title" id="author-modal-name">―</div>
+        <div class="modal-book-author" id="author-modal-sub"></div>
+      </div>
+      <button class="modal-close" onclick="closeAuthorModal()">✕</button>
+    </div>
+    <div id="author-book-list"></div>
+  </div>
+</div>
+
 <!-- 全ハイライトモーダル -->
 <div id="all-hl-modal" onclick="closeModalOutside(event)">
   <div class="modal-inner">
@@ -452,7 +499,7 @@
     <div class="book-meta" style="display:flex;align-items:flex-start;gap:8px">
       <div style="flex:1">
         <div class="book-title" id="hl-title" onclick="showAllHighlights()" style="cursor:pointer" title="タップで全ハイライト表示">―</div>
-        <div class="book-author" id="hl-author">―</div>
+        <div class="book-author" id="hl-author" onclick="showAuthorBooks()" title="著者の全作品を表示"></div>
       </div>
       <button class="book-star-btn" id="book-star-btn" onclick="toggleBookFavorite()" title="本をお気に入り">📚☆</button>
     </div>
@@ -514,6 +561,7 @@ let GEMINI_KEY = '';
 let FAVORITES      = [];  // [{b, h, savedAt}]
 let FAV_BOOKS      = [];  // [bookId, ...]
 let ENC_LOG        = {};  // {key: {count, encounters:[{date,mode}]}}
+let AUTHOR_MAP     = {};  // {author: [bookId, ...]}
 
 // ─── 状態 ──────────────────────────────────────────
 let currentHL    = null;  // {b, h}
@@ -554,6 +602,12 @@ async function loadData() {
     SESSIONS   = await sRes.json();
     fill.style.width = '100%';
 
+    // 著者マップ作成
+    BOOKS.forEach(b => {
+      if (!AUTHOR_MAP[b.author]) AUTHOR_MAP[b.author] = [];
+      AUTHOR_MAP[b.author].push(b.id);
+    });
+
     document.getElementById('stat-books').textContent    = BOOKS.length.toLocaleString();
     document.getElementById('stat-hl').textContent       = HIGHLIGHTS.length.toLocaleString();
     document.getElementById('stat-sessions').textContent = SESSIONS.length;
@@ -588,9 +642,18 @@ function showHighlight(hl) {
 
     const book = BOOKS[hl.b];
     document.getElementById('hl-title').textContent  = book?.title  || '―';
-    document.getElementById('hl-author').textContent = book?.author || '―';
     document.getElementById('hl-text').textContent   = hl.h;
     document.getElementById('view-count').textContent = viewCount + ' 件目';
+
+    // 著者名 + 同著者冊数バッジ
+    const authorEl   = document.getElementById('hl-author');
+    const authorName = book?.author || '―';
+    const sameAuthorCount = (AUTHOR_MAP[authorName] || []).length;
+    if (sameAuthorCount > 1) {
+      authorEl.innerHTML = `<span class="book-author-link">${escHtml(authorName)}<span class="author-count-badge">同著者 ${sameAuthorCount}冊</span></span>`;
+    } else {
+      authorEl.textContent = authorName;
+    }
 
     // 壁打ちセッションヒント
     const hintEl = document.getElementById('hl-session');
@@ -838,6 +901,51 @@ function showSetup() {
   document.getElementById('setup-key').value = GEMINI_KEY;
   hide('main-screen');
   show('setup-screen');
+}
+
+// ─── 著者モーダル ────────────────────────────────────
+function showAuthorBooks() {
+  if (!currentHL) return;
+  const book       = BOOKS[currentHL.b];
+  const authorName = book?.author || '';
+  const bookIds    = AUTHOR_MAP[authorName] || [];
+  if (bookIds.length <= 1) return; // 1冊だけなら開かない
+
+  document.getElementById('author-modal-name').textContent = authorName;
+  document.getElementById('author-modal-sub').textContent  = `${bookIds.length}冊のハイライトがあります`;
+
+  const list = document.getElementById('author-book-list');
+  list.innerHTML = '';
+  bookIds.forEach(bId => {
+    const b   = BOOKS[bId];
+    const cnt = HIGHLIGHTS.filter(h => h.b === bId).length;
+    const div = document.createElement('div');
+    div.className = 'author-book-item';
+    div.innerHTML = `
+      <span class="author-book-title">${escHtml(b.title)}</span>
+      <span class="author-book-hl-count">${cnt}件</span>
+    `;
+    div.addEventListener('click', () => {
+      closeAuthorModal();
+      // その本のハイライトをランダム表示
+      currentMode = '著者の本';
+      const pool = HIGHLIGHTS.filter(h => h.b === bId);
+      if (pool.length) showHighlight(pool[Math.floor(Math.random() * pool.length)]);
+    });
+    list.appendChild(div);
+  });
+
+  document.getElementById('author-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeAuthorModal() {
+  document.getElementById('author-modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function closeAuthorModalOutside(e) {
+  if (e.target === document.getElementById('author-modal')) closeAuthorModal();
 }
 
 // ─── エンカウントシステム ─────────────────────────────
