@@ -400,6 +400,84 @@
     }
     .btn-analyze-book:hover    { border-color: var(--ai); background: #1a2a35; }
     .btn-analyze-book:disabled { opacity: 0.4; cursor: default; }
+
+    /* ─── 検索タブ ─────────────────────────── */
+    .search-box {
+      width: 100%;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 16px;
+      padding: 12px 14px;
+      margin-bottom: 6px;
+    }
+    .search-box:focus { outline: none; border-color: var(--accent); }
+    .search-hint {
+      font-size: 11px; color: #666;
+      margin-bottom: 14px; padding-left: 4px;
+    }
+    .search-stats {
+      font-size: 12px; color: #888;
+      margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .search-stats .clear-btn {
+      background: none; border: 1px solid #333;
+      color: #666; font-size: 11px;
+      padding: 4px 10px; border-radius: 6px;
+      cursor: pointer;
+    }
+    .search-stats .clear-btn:hover { border-color: #555; color: #aaa; }
+    .search-result {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      transition: border-color 0.15s;
+    }
+    .search-result:hover { border-color: #3a3a3a; }
+    .search-result .sr-title {
+      font-size: 13px; font-weight: 700; color: #d0c0a0;
+      margin-bottom: 2px;
+    }
+    .search-result .sr-author {
+      font-size: 11px; color: #888;
+      margin-bottom: 8px;
+    }
+    .search-result .sr-text {
+      font-size: 14px; line-height: 1.6; color: #e6dccb;
+      margin-bottom: 10px;
+    }
+    .search-result .sr-text mark {
+      background: rgba(245, 200, 66, 0.25);
+      color: #ffd966;
+      padding: 0 2px; border-radius: 2px;
+    }
+    .search-result .sr-actions {
+      display: flex; gap: 6px;
+    }
+    .search-result .sr-btn {
+      flex: 1; background: #1a2a35;
+      border: 1px solid #2a4a5a;
+      color: var(--ai);
+      font-size: 12px; font-weight: 700;
+      padding: 8px; border-radius: 6px;
+      cursor: pointer;
+    }
+    .search-result .sr-btn:hover { border-color: var(--ai); background: #1f3540; }
+    .search-result .sr-btn.secondary {
+      color: #aaa; background: #1a1a1a; border-color: #333;
+    }
+    .search-result .sr-btn.secondary:hover { border-color: #555; color: #fff; }
+    .search-empty {
+      text-align: center; color: #555;
+      padding: 30px 0; font-size: 13px;
+    }
+    .search-more {
+      text-align: center; color: #666;
+      font-size: 11px; padding: 14px 0;
+    }
     .modal-hl-item {
       border-left: 3px solid var(--border);
       padding: 10px 0 10px 14px;
@@ -477,6 +555,7 @@
   <div class="tab-row">
     <button class="tab-btn active" id="tab-random" onclick="switchTab('random')">ランダム</button>
     <button class="tab-btn"        id="tab-fav"    onclick="switchTab('fav')">★ お気に入り <span id="fav-badge"></span></button>
+    <button class="tab-btn"        id="tab-search" onclick="switchTab('search')">🔍 検索</button>
   </div>
 
   <div class="stats-row">
@@ -524,6 +603,19 @@
     <button class="btn-sm ai-btn" onclick="startAI()">🤖 AIに連想させる</button>
     <button class="btn-sm" onclick="sameBook()">📖 この本をもっと</button>
     <button class="btn-sm" onclick="sessionReplay()">🔁 壁打ち再生</button>
+  </div>
+
+  <!-- 検索 -->
+  <div id="search-section" style="display:none">
+    <input type="text" class="search-box" id="search-input"
+           placeholder="書名・著者・本文を検索（スペース区切りでAND検索）"
+           oninput="onSearchInput()">
+    <div class="search-hint">例：「ビットコイン 自由」「佐藤優 国家」「商売 哲学」</div>
+    <div class="search-stats" id="search-stats" style="display:none">
+      <span id="search-count"></span>
+      <button class="clear-btn" onclick="clearSearch()">クリア</button>
+    </div>
+    <div id="search-results"></div>
   </div>
 
   <!-- お気に入り一覧 -->
@@ -1015,23 +1107,128 @@ function toggleEncHistory() {
   arrow.textContent = open ? '▾' : '▸';
 }
 
+// ─── 検索 ────────────────────────────────────────────
+let searchTimer = null;
+const SEARCH_LIMIT = 100;
+
+function onSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 220);
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').innerHTML = '';
+  document.getElementById('search-stats').style.display = 'none';
+}
+
+function runSearch() {
+  const raw = document.getElementById('search-input').value.trim();
+  const resBox  = document.getElementById('search-results');
+  const stats   = document.getElementById('search-stats');
+  if (!raw) {
+    resBox.innerHTML = '';
+    stats.style.display = 'none';
+    return;
+  }
+  const terms = raw.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return;
+
+  const matches = [];
+  for (let i = 0; i < HIGHLIGHTS.length; i++) {
+    const h = HIGHLIGHTS[i];
+    const book = BOOKS[h.b] || {};
+    const hay = (h.h + '\n' + (book.title || '') + '\n' + (book.author || '')).toLowerCase();
+    if (terms.every(t => hay.includes(t))) {
+      matches.push({ b: h.b, h: h.h });
+      if (matches.length > SEARCH_LIMIT * 2) break;  // 早期打ち切り
+    }
+  }
+
+  stats.style.display = 'flex';
+  document.getElementById('search-count').textContent =
+    matches.length >= SEARCH_LIMIT
+      ? `${SEARCH_LIMIT}件以上ヒット（上位${SEARCH_LIMIT}件を表示）`
+      : `${matches.length} 件ヒット`;
+
+  if (!matches.length) {
+    resBox.innerHTML = `<div class="search-empty">該当なし。キーワードを変えてみて</div>`;
+    return;
+  }
+
+  const shown = matches.slice(0, SEARCH_LIMIT);
+  let html = '';
+  for (const m of shown) {
+    const book = BOOKS[m.b] || {};
+    html += `
+      <div class="search-result">
+        <div class="sr-title">${escHtml(book.title || '―')}</div>
+        <div class="sr-author">${escHtml(book.author || '―')}</div>
+        <div class="sr-text">${highlightMatch(m.h, terms)}</div>
+        <div class="sr-actions">
+          <button class="sr-btn" onclick="discussFromSearch(${m.b}, ${JSON.stringify(m.h)})">🔥 これで議論する</button>
+          <button class="sr-btn secondary" onclick="openInRandomTab(${m.b}, ${JSON.stringify(m.h)})">📖 開く</button>
+        </div>
+      </div>
+    `;
+  }
+  if (matches.length > SEARCH_LIMIT) {
+    html += `<div class="search-more">…他にも候補があります。キーワードを足して絞り込んでください</div>`;
+  }
+  resBox.innerHTML = html;
+}
+
+function highlightMatch(text, terms) {
+  let out = escHtml(text);
+  for (const t of terms) {
+    if (!t) continue;
+    const re = new RegExp('(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    out = out.replace(re, '<mark>$1</mark>');
+  }
+  return out;
+}
+
+function openInRandomTab(bId, hText) {
+  currentHL  = { b: bId, h: hText };
+  currentMode = '検索から';
+  switchTab('random');
+  showHighlight(currentHL);
+}
+
+async function discussFromSearch(bId, hText) {
+  currentHL   = { b: bId, h: hText };
+  currentMode = '検索から議論';
+  switchTab('random');
+  showHighlight(currentHL);
+  // 少し待ってからAI発火（カードのfade transitionを尊重）
+  setTimeout(() => startAI(), 250);
+}
+
 // ─── タブ切り替え ────────────────────────────────────
 function switchTab(tab) {
   const isRandom = tab === 'random';
+  const isFav    = tab === 'fav';
+  const isSearch = tab === 'search';
   document.getElementById('tab-random').classList.toggle('active', isRandom);
-  document.getElementById('tab-fav').classList.toggle('active', !isRandom);
+  document.getElementById('tab-fav').classList.toggle('active', isFav);
+  document.getElementById('tab-search').classList.toggle('active', isSearch);
 
   // ランダムタブ
-  const randomEls = ['stat-row', 'hl-card', 'btn-next-wrap', 'btn-row-wrap', 'ai-section'];
-  document.querySelector('.stats-row').style.display       = isRandom ? 'flex'  : 'none';
-  document.getElementById('hl-card').style.display         = isRandom ? 'block' : 'none';
+  document.querySelector('.stats-row').style.display          = isRandom ? 'flex'  : 'none';
+  document.getElementById('hl-card').style.display            = isRandom ? 'block' : 'none';
   document.getElementById('btn-next-container').style.display = isRandom ? 'block' : 'none';
   document.getElementById('btn-row-container').style.display  = isRandom ? 'flex'  : 'none';
-  document.getElementById('ai-section').style.display     = isRandom ? (document.getElementById('ai-section').dataset.open ? 'block' : 'none') : 'none';
+  document.getElementById('ai-section').style.display         = isRandom ? (document.getElementById('ai-section').dataset.open ? 'block' : 'none') : 'none';
 
   // お気に入りタブ
-  document.getElementById('fav-section').style.display = isRandom ? 'none' : 'block';
-  if (!isRandom) renderFavorites();
+  document.getElementById('fav-section').style.display = isFav ? 'block' : 'none';
+  if (isFav) renderFavorites();
+
+  // 検索タブ
+  document.getElementById('search-section').style.display = isSearch ? 'block' : 'none';
+  if (isSearch) {
+    setTimeout(() => document.getElementById('search-input').focus(), 50);
+  }
 }
 
 // ─── お気に入り ──────────────────────────────────────
